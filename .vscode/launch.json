@@ -13,6 +13,19 @@
         "WaitOnNormalExit",
         "RedirectOutput"
       ]
+    },
+    {
+      "name": "Python2",
+      "type": "python",
+      "request": "launch",
+      "pythonPath": "C:/Python27/python.exe",
+      "program": "${file}",
+      "cwd": "${workspaceRoot}",
+      "debugOptions": [
+        "WaitOnAbnormalExit",
+        "WaitOnNormalExit",
+        "RedirectOutput"
+      ]
     }
   ]
 }
