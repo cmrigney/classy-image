@@ -21,9 +21,9 @@ class CircularHistogramDepthDifference(BaseFeature):
     cy1 = height/2 - self.block_size/2
     cx = width/2
     cy = height/2
-    d_center = np.mean(data[int(cx1):int(cx1+self.block_size), int(cy1):int(cy1+self.block_size)])
+    d_center = np.mean(data[int(cy1):int(cy1+self.block_size), int(cx1):int(cx1+self.block_size)])
     if draw_regions:
-      drawing[int(cx1):int(cx1+self.block_size), int(cy1):int(cy1+self.block_size)] = drawing[int(cx1):int(cx1+self.block_size), int(cy1):int(cy1+self.block_size)]/2 
+      drawing[int(cy1):int(cy1+self.block_size), int(cx1):int(cx1+self.block_size)] = drawing[int(cy1):int(cy1+self.block_size), int(cx1):int(cx1+self.block_size)]/2 
     for ring in range(0, self.num_rings):
       ring_features = []
       dist = (ring+1) * self.ring_dist
@@ -33,9 +33,9 @@ class CircularHistogramDepthDifference(BaseFeature):
         theta = alpha * block
         x = dist * math.sin(theta) + cx - self.block_size/2.
         y = dist * math.cos(theta) + cy - self.block_size/2.
-        d = np.mean(data[int(x):int(x+self.block_size), int(y):int(y+self.block_size)])
+        d = np.mean(data[int(y):int(y+self.block_size), int(x):int(x+self.block_size)])
         if draw_regions:
-          drawing[int(x):int(x+self.block_size), int(y):int(y+self.block_size)] = drawing[int(x):int(x+self.block_size), int(y):int(y+self.block_size)]/2
+          drawing[int(y):int(y+self.block_size), int(x):int(x+self.block_size)] = drawing[int(y):int(y+self.block_size), int(x):int(x+self.block_size)]/2
         if math.isnan(d):
           raise Exception('Uh oh')
         ring_features.append(max(min(d - d_center, 120), -80))
