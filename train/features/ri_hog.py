@@ -78,7 +78,48 @@ class RIHOG(BaseFeature):
     idx = (theta % 180)/180
     idx *= len(bins)
     idx = int(idx)
-    bins[idx] += g 
+    #need to distribute based on position
+    bins[idx] += g
+  
+  def _preprocess(self, data):
+    width = data.shape[1]
+    height = data.shape[0]
+    cx = int(width/2)
+    cy = int(height/2)
+    result = data.copy()
+    for spatial_bin in range(0, self.num_spatial_bins):
+      radius = self.delta_radius * (spatial_bin + 1)
+      totals = 0
+      for y in range(0, radius):
+        lp = self._get_circle_point(y, radius)
+        stopPoint = self._get_circle_point(y, radius - self.delta_radius)
+        for x in range(stopPoint[0], lp[0] + 1):
+          totals += data[cy + y, cx + x]**2
+          if x != 0:
+            totals += data[cy + y, cx - x]**2
+          if y != 0:
+            totals += data[cy - y, cx + x]**2
+          if x != 0 and y != 0:
+            totals += data[cy - y, cx - x]**2
+      magnitude = math.sqrt(totals + 2)
+      totals = 0
+      for y in range(0, radius):
+        lp = self._get_circle_point(y, radius)
+        stopPoint = self._get_circle_point(y, radius - self.delta_radius)
+        for x in range(stopPoint[0], lp[0] + 1):
+          result[cy + y, cx + x] = data[cy + y, cx + x] / magnitude
+          if result[cy + y, cx + x] > .2:
+            result[cy + y, cx + x] = .2
+          totals += result[cy + y, cx + x]
+      magnitude = math.sqrt(totals)
+      for y in range(0, radius):
+        lp = self._get_circle_point(y, radius)
+        stopPoint = self._get_circle_point(y, radius - self.delta_radius)
+        for x in range(stopPoint[0], lp[0] + 1):
+          result[cy + y, cx + x] = result[cy + y, cx + x] / magnitude
+          result[cy + y, cx + x] *= 255
+      return result
+      
   
   def process_data(self, data, draw_regions):
     drawing = data.copy()
@@ -87,6 +128,7 @@ class RIHOG(BaseFeature):
     height = data.shape[0]
     cx = int(width/2)
     cy = int(height/2)
+    data = self._preprocess(data)
     for spatial_bin in range(0, self.num_spatial_bins):
       radius = self.delta_radius * (spatial_bin + 1)
       bins = [0] * self.num_orientation_bins
