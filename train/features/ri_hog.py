@@ -1,13 +1,27 @@
 import numpy as np
 import math
 from .base_feature import BaseFeature
+import cv2
+
+def _norm_and_mult(cx, cy, x, y, magnitude, result):
+  result[cy + y, cx + x] = result[cy + y, cx + x] / magnitude
+  result[cy + y, cx + x] *= 255
+
+def _norm_and_clip(cx, cy, x, y, magnitude, result, data):
+  result[cy + y, cx + x] = data[cy + y, cx + x] / magnitude
+  if result[cy + y, cx + x] > .2:
+    result[cy + y, cx + x] = .2
+  return result[cy + y, cx + x]**2
 
 class RIHOG(BaseFeature):
-  def __init__(self, num_spatial_bins=4, delta_radius=4, num_orientation_bins=13):
+  def __init__(self, num_spatial_bins=4, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_block_size=16, normalize_threshold=0.2):
     BaseFeature.__init__(self)
     self.delta_radius = delta_radius
     self.num_orientation_bins = num_orientation_bins
     self.num_spatial_bins = num_spatial_bins
+    self.normalize = normalize
+    self.normalize_block_size = normalize_block_size
+    self.normalize_threshold = normalize_threshold
     self.lut = self._build_lut(64)
 
   def _build_lut(self, resolution):
@@ -82,6 +96,26 @@ class RIHOG(BaseFeature):
     bins[idx] += g
   
   def _preprocess(self, data):
+    result = data.copy()
+    width = data.shape[1]
+    height = data.shape[0]
+    for blockY in range(0, height, self.normalize_block_size):
+      if blockY + self.normalize_block_size > height:
+        blockY = height - self.normalize_block_size
+      for blockX in range(0, width, self.normalize_block_size):
+        if blockX + self.normalize_block_size > width:
+          blockX = width - self.normalize_block_size
+        p = result[blockY:blockY+self.normalize_block_size, blockX:blockX+self.normalize_block_size]
+        val = np.zeros((self.normalize_block_size, self.normalize_block_size))
+        val = cv2.normalize(p, val, norm_type=cv2.NORM_L2)
+        highVals = val > self.normalize_threshold
+        val[highVals] = self.normalize_threshold
+        val = cv2.normalize(val, val, norm_type=cv2.NORM_L2)
+        result[blockY:blockY+self.normalize_block_size, blockX:blockX+self.normalize_block_size] = val * 255
+    return result
+
+  #this is supposed to be annular cell normalization but does not work right
+  def _preprocess2(self, data):
     width = data.shape[1]
     height = data.shape[0]
     cx = int(width/2)
@@ -103,22 +137,33 @@ class RIHOG(BaseFeature):
             totals += data[cy - y, cx - x]**2
       magnitude = math.sqrt(totals + 2)
       totals = 0
+
       for y in range(0, radius):
         lp = self._get_circle_point(y, radius)
         stopPoint = self._get_circle_point(y, radius - self.delta_radius)
         for x in range(stopPoint[0], lp[0] + 1):
-          result[cy + y, cx + x] = data[cy + y, cx + x] / magnitude
-          if result[cy + y, cx + x] > .2:
-            result[cy + y, cx + x] = .2
-          totals += result[cy + y, cx + x]
-      magnitude = math.sqrt(totals)
+          totals += _norm_and_clip(cx, cy, x, y, magnitude, result, data)
+          if x != 0:
+            totals += _norm_and_clip(cx, cy, -x, y, magnitude, result, data)
+          if y != 0:
+            totals += _norm_and_clip(cx, cy, x, -y, magnitude, result, data)
+          if x != 0 and y != 0:
+            totals += _norm_and_clip(cx, cy, -x, -y, magnitude, result, data)
+      magnitude = math.sqrt(totals + 2)
+
       for y in range(0, radius):
         lp = self._get_circle_point(y, radius)
         stopPoint = self._get_circle_point(y, radius - self.delta_radius)
         for x in range(stopPoint[0], lp[0] + 1):
-          result[cy + y, cx + x] = result[cy + y, cx + x] / magnitude
-          result[cy + y, cx + x] *= 255
-      return result
+          _norm_and_mult(cx, cy, x, y, magnitude, result)
+          if x != 0:
+            _norm_and_mult(cx, cy, -x, y, magnitude, result)
+          if y != 0:
+            _norm_and_mult(cx, cy, x, -y, magnitude, result)
+          if x != 0 and y != 0:
+            _norm_and_mult(cx, cy, -x, -y, magnitude, result)
+
+    return result
       
   
   def process_data(self, data, draw_regions):
@@ -128,7 +173,8 @@ class RIHOG(BaseFeature):
     height = data.shape[0]
     cx = int(width/2)
     cy = int(height/2)
-    data = self._preprocess(data)
+    if self.normalize:
+      data = self._preprocess(data)
     for spatial_bin in range(0, self.num_spatial_bins):
       radius = self.delta_radius * (spatial_bin + 1)
       bins = [0] * self.num_orientation_bins
