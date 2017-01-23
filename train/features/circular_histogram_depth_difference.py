@@ -39,7 +39,7 @@ class CircularHistogramDepthDifference(BaseFeature):
         if math.isnan(d):
           raise Exception('Uh oh')
         ring_features.append(max(min(d - d_center, 120), -80))
-      hist, edges = np.histogram(np.asarray(ring_features), bins=[-80 -20, 0, 10, 30, 50, 80, 120])
+      hist, edges = np.histogram(np.asarray(ring_features), bins=[-80, -20, 0, 10, 30, 50, 80, 120])
       features = np.concatenate((features, hist))
     if draw_regions:
       return features, drawing
