@@ -7,8 +7,8 @@ c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, nu
 
 features, drawing = c.process_image('data/test/test.png', True)
 
-plt.imshow(drawing)
-plt.show()
+#plt.imshow(drawing)
+#plt.show()
 
 import numpy as np
 def graph(formula, x_range):
@@ -22,16 +22,16 @@ def graph(formula, x_range):
 #graph('x', range(0, 11))
 #plt.show()
 
-rhog = RIHOG(num_spatial_bins=5, delta_radius=6, num_orientation_bins=13)
+rhog = RIHOG(num_spatial_bins=5, delta_radius=10, num_orientation_bins=9)
 
-img = cv2.imread('data/test/test3.png', 0)
+img = cv2.imread('data/test/test4.png', 0)
 sx = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=1)
 sy = cv2.Sobel(img, cv2.CV_64F, 0, 1, ksize=1)
 s = np.abs(sx) + np.abs(sy)
 plt.imshow(s)
 plt.show()
 
-features, drawing = rhog.process_image('data/test/test3.png', True)
+features, drawing = rhog.process_image('data/test/test4.png', True)
 
 plt.imshow(drawing)
 plt.show()
