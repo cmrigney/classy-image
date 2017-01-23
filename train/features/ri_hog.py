@@ -14,13 +14,12 @@ def _norm_and_clip(cx, cy, x, y, magnitude, result, data):
   return result[cy + y, cx + x]**2
 
 class RIHOG(BaseFeature):
-  def __init__(self, num_spatial_bins=4, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_block_size=32, normalize_threshold=0.2):
+  def __init__(self, num_spatial_bins=4, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_threshold=0.2):
     BaseFeature.__init__(self)
     self.delta_radius = delta_radius
     self.num_orientation_bins = num_orientation_bins
     self.num_spatial_bins = num_spatial_bins
     self.normalize = normalize
-    self.normalize_block_size = normalize_block_size
     self.normalize_threshold = normalize_threshold
     self.lut = self._build_lut(64)
 
@@ -91,105 +90,31 @@ class RIHOG(BaseFeature):
     theta = tup[1]
     idx = (theta % 180)/180
     idx *= len(bins)
-    idx = int(idx)
-    #need to distribute based on position
-    bins[idx] += g
-  
-  def _vert_interpolate(self, x, y, h, data):
-    for i in range(y, y + h):
-      temp = data[i, x]
-      data[i, x] *= 0.6
-      data[i, x] += data[i, x+1]*0.4
-      data[i, x+1] *= 0.6
-      data[i, x+1] += temp*0.4
-  
-  def _hor_interpolate(self, x, y, w, data):
-    for j in range(x, x + w):
-      temp = data[y, j]
-      data[y, j] *= 0.6
-      data[y, j] += data[y+1, j]*0.4
-      data[y+1, j] *= 0.6
-      data[y+1, j] += temp*0.4
-  
-  def _preprocess(self, data):
-    result = data.copy()
-    width = data.shape[1]
-    height = data.shape[0]
-    for blockY in range(0, height, int(self.normalize_block_size/2)):
-      if blockY + self.normalize_block_size > height:
-        blockY = height - self.normalize_block_size
-      for blockX in range(0, width, int(self.normalize_block_size/2)):
-        if blockX + self.normalize_block_size > width:
-          blockX = width - self.normalize_block_size
-        p = data[blockY:blockY+self.normalize_block_size, blockX:blockX+self.normalize_block_size]
-        val = np.zeros((self.normalize_block_size, self.normalize_block_size))
-        val = cv2.normalize(p, val, norm_type=cv2.NORM_L2)
-        highVals = val > self.normalize_threshold
-        val[highVals] = self.normalize_threshold
-        val = cv2.normalize(val, val, norm_type=cv2.NORM_L2)
-        result[blockY:blockY+self.normalize_block_size, blockX:blockX+self.normalize_block_size] = val * 255
-        if blockX > 0:
-          self._vert_interpolate(blockX - 1, blockY, self.normalize_block_size, result)
-          self._vert_interpolate(blockX - 2, blockY, self.normalize_block_size, result)
-          self._vert_interpolate(blockX, blockY, self.normalize_block_size, result)
-        
-      if blockY > 0:
-        self._hor_interpolate(0, blockY - 1, self.normalize_block_size, result)
-        self._hor_interpolate(0, blockY - 2, self.normalize_block_size, result)
-        self._hor_interpolate(0, blockY, self.normalize_block_size, result)
-    return result
+    idx -= 0.5
+    lowerIdx = math.floor(idx) % len(bins)
+    higherIdx = math.ceil(idx) % len(bins)
+    if lowerIdx == higherIdx:
+      bins[lowerIdx] += g
+      return
+    
+    lowerPercent = 1 - (abs(idx - lowerIdx) % 1)
+    higherPercent = 1 - (abs(higherIdx - idx) % 1)
 
-  #this is supposed to be annular cell normalization but does not work right
-  def _preprocess2(self, data):
-    width = data.shape[1]
-    height = data.shape[0]
-    cx = int(width/2)
-    cy = int(height/2)
-    result = data.copy()
+    bins[lowerIdx] += g*lowerPercent
+    bins[higherIdx] += g*higherPercent
+  
+  def _normalize_features(self, features):
+    normFeatures = np.asarray([])
     for spatial_bin in range(0, self.num_spatial_bins):
-      radius = self.delta_radius * (spatial_bin + 1)
-      totals = 0
-      for y in range(0, radius):
-        lp = self._get_circle_point(y, radius)
-        stopPoint = self._get_circle_point(y, radius - self.delta_radius)
-        for x in range(stopPoint[0], lp[0] + 1):
-          totals += data[cy + y, cx + x]**2
-          if x != 0:
-            totals += data[cy + y, cx - x]**2
-          if y != 0:
-            totals += data[cy - y, cx + x]**2
-          if x != 0 and y != 0:
-            totals += data[cy - y, cx - x]**2
-      magnitude = math.sqrt(totals + 2)
-      totals = 0
-
-      for y in range(0, radius):
-        lp = self._get_circle_point(y, radius)
-        stopPoint = self._get_circle_point(y, radius - self.delta_radius)
-        for x in range(stopPoint[0], lp[0] + 1):
-          totals += _norm_and_clip(cx, cy, x, y, magnitude, result, data)
-          if x != 0:
-            totals += _norm_and_clip(cx, cy, -x, y, magnitude, result, data)
-          if y != 0:
-            totals += _norm_and_clip(cx, cy, x, -y, magnitude, result, data)
-          if x != 0 and y != 0:
-            totals += _norm_and_clip(cx, cy, -x, -y, magnitude, result, data)
-      magnitude = math.sqrt(totals + 2)
-
-      for y in range(0, radius):
-        lp = self._get_circle_point(y, radius)
-        stopPoint = self._get_circle_point(y, radius - self.delta_radius)
-        for x in range(stopPoint[0], lp[0] + 1):
-          _norm_and_mult(cx, cy, x, y, magnitude, result)
-          if x != 0:
-            _norm_and_mult(cx, cy, -x, y, magnitude, result)
-          if y != 0:
-            _norm_and_mult(cx, cy, x, -y, magnitude, result)
-          if x != 0 and y != 0:
-            _norm_and_mult(cx, cy, -x, -y, magnitude, result)
-
-    return result
-      
+      startFeatureIdx = max((spatial_bin - 1) * self.num_orientation_bins, 0)
+      endFeatureIdx = min((spatial_bin + 1) * self.num_orientation_bins, len(features))
+      workingFeatures = features[startFeatureIdx:endFeatureIdx]
+      workingFeatures = cv2.normalize(workingFeatures, workingFeatures, norm_type=cv2.NORM_L2)
+      highVals = workingFeatures > self.normalize_threshold
+      workingFeatures[highVals] = self.normalize_threshold
+      workingFeatures = cv2.normalize(workingFeatures, workingFeatures, norm_type=cv2.NORM_L2)
+      normFeatures = np.concatenate((normFeatures, workingFeatures))
+    return normFeatures
   
   def process_data(self, data, draw_regions):
     drawing = data.copy()
@@ -198,8 +123,6 @@ class RIHOG(BaseFeature):
     height = data.shape[0]
     cx = int(width/2)
     cy = int(height/2)
-    if self.normalize:
-      data = self._preprocess(data)
     for spatial_bin in range(0, self.num_spatial_bins):
       radius = self.delta_radius * (spatial_bin + 1)
       bins = [0] * self.num_orientation_bins
@@ -217,6 +140,10 @@ class RIHOG(BaseFeature):
           if draw_regions and x == stopPoint[0]:
             drawing[cy + y, cx + x] = 0
       features = np.concatenate((features, bins))
+    
+    if self.normalize:
+      features = self._normalize_features(features)
+
     if draw_regions:
       return features, drawing
     else:
