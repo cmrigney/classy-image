@@ -1,5 +1,6 @@
 import cv2
 import numpy as np
+from features.ri_hog import RIHOG
 from features.circular_histogram_depth_difference import CircularHistogramDepthDifference
 from sklearn.utils import shuffle
 from sklearn.model_selection import train_test_split
@@ -8,7 +9,8 @@ clf = cv2.ml.Boost_create()
 clf.setWeakCount(5)
 clf.setBoostType(cv2.ml.BOOST_REAL)
 
-c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, num_blocks_first_ring=6, dist_mult=1.1)
+#c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, num_blocks_first_ring=6, dist_mult=1.1)
+c = RIHOG(num_spatial_bins=4, delta_radius=6, num_orientation_bins=7, normalize=True, normalize_threshold=0.2)
 
 def getSamples():
   X = []
@@ -47,7 +49,7 @@ y = np.asarray(y, dtype=np.int32)
 
 X, y = shuffle(X, y, random_state=1)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=1)
 
 clf.train(X_train, cv2.ml.ROW_SAMPLE, y_train)
 

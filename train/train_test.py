@@ -4,10 +4,12 @@ from sklearn.model_selection import cross_val_predict
 from sklearn import metrics
 from sklearn.utils import shuffle
 from features.circular_histogram_depth_difference import CircularHistogramDepthDifference
+from features.ri_hog import RIHOG
 
 clf = AdaBoostClassifier(n_estimators=5)
 
-c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, num_blocks_first_ring=6)
+#c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, num_blocks_first_ring=6)
+c = RIHOG(num_spatial_bins=4, delta_radius=6, num_orientation_bins=9, normalize=True, normalize_threshold=0.2)
 
 def getSamples():
   X = []

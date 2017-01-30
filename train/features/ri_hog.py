@@ -138,7 +138,7 @@ class RIHOG(BaseFeature):
           if x != 0 and y != 0:
             self._bin_values(bins, self._handle_pixel(cx, cy, -x, -y, data, drawing, draw_regions))
           if draw_regions and x == stopPoint[0]:
-            drawing[cy + y, cx + x] = 0
+            drawing[cy + y, cx + x] = 255
       features = np.concatenate((features, bins))
     
     if self.normalize:
