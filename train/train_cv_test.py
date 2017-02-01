@@ -58,3 +58,6 @@ clf.save('test.xml')
 print("Training Accuracy: %0.5f" % acc)
 acc = np.sum((y_test == clf.predict(X_test)[1].flatten()).astype(np.int))/len(y_test)
 print("Test Accuracy: %0.5f" % acc)
+
+def getClf():
+  return clf
