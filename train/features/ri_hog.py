@@ -2,6 +2,7 @@ import numpy as np
 import math
 from .base_feature import BaseFeature
 import cv2
+from scipy.ndimage.filters import gaussian_filter as gf
 
 def _norm_and_mult(cx, cy, x, y, magnitude, result):
   result[cy + y, cx + x] = result[cy + y, cx + x] / magnitude
@@ -14,7 +15,7 @@ def _norm_and_clip(cx, cy, x, y, magnitude, result, data):
   return result[cy + y, cx + x]**2
 
 class RIHOG(BaseFeature):
-  def __init__(self, num_spatial_bins=4, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_threshold=0.2):
+  def __init__(self, num_spatial_bins=4, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_threshold=0.2, gaussian_filter=True, sigma=2, var_feature=True, var_split=8):
     BaseFeature.__init__(self)
     self.delta_radius = delta_radius
     self.num_orientation_bins = num_orientation_bins
@@ -22,6 +23,10 @@ class RIHOG(BaseFeature):
     self.normalize = normalize
     self.normalize_threshold = normalize_threshold
     self.lut = self._build_lut(64)
+    self.gaussian_filter = gaussian_filter
+    self.sigma = sigma
+    self.var_feature = var_feature
+    self.var_split = var_split
 
   def _build_lut(self, resolution):
     lut = []
@@ -45,6 +50,8 @@ class RIHOG(BaseFeature):
   def _handle_pixel(self, cx, cy, x, y, data, drawing, draw_regions):
     if draw_regions:
       drawing[cy + y, cx + x] /= 2
+    
+    vectorAngle = math.atan2(y, x)*180/math.pi
     lowerY = .5*abs(x)
     upperY = 2*abs(x)
     absY = abs(y)
@@ -82,12 +89,13 @@ class RIHOG(BaseFeature):
 
     if draw_regions:
       drawing[py, px] = g
-
-    return (g, theta)
+    
+    return (g, theta, vectorAngle)
   
-  def _bin_values(self, bins, tup):
+  def _bin_values(self, bins, var_hist, tup):
     g = tup[0]
-    theta = tup[1]
+    theta = tup[1] + int(90/self.num_orientation_bins)
+    vectorAngle = tup[2]
     idx = (theta % 180)/180
     idx *= len(bins)
     idx -= 0.5
@@ -102,6 +110,11 @@ class RIHOG(BaseFeature):
 
     bins[lowerIdx] += g*lowerPercent
     bins[higherIdx] += g*higherPercent
+
+    var_idx = vectorAngle/360
+    var_idx *= self.var_split
+    var_idx = int(var_idx)
+    var_hist[var_idx] += g
   
   def _normalize_features(self, features):
     normFeatures = np.asarray([])
@@ -117,32 +130,52 @@ class RIHOG(BaseFeature):
     return normFeatures
   
   def process_data(self, data, draw_regions):
+    if self.gaussian_filter:
+      data = gf(data, sigma=self.sigma)
     drawing = data.copy()
     features = np.asarray([])
     width = data.shape[1]
     height = data.shape[0]
     cx = int(width/2)
     cy = int(height/2)
+    var_features = []
     for spatial_bin in range(0, self.num_spatial_bins):
       radius = self.delta_radius * (spatial_bin + 1)
       bins = [0] * self.num_orientation_bins
+      var_hist = [0] * self.var_split
       for y in range(0, radius):
         lp = self._get_circle_point(y, radius)
         stopPoint = self._get_circle_point(y, radius - self.delta_radius)
         for x in range(stopPoint[0], lp[0] + 1):
-          self._bin_values(bins, self._handle_pixel(cx, cy, x, y, data, drawing, draw_regions))
+          self._bin_values(bins, var_hist, self._handle_pixel(cx, cy, x, y, data, drawing, draw_regions))
           if x != 0:
-            self._bin_values(bins, self._handle_pixel(cx, cy, -x, y, data, drawing, draw_regions))
+            self._bin_values(bins, var_hist, self._handle_pixel(cx, cy, -x, y, data, drawing, draw_regions))
           if y != 0:
-            self._bin_values(bins, self._handle_pixel(cx, cy, x, -y, data, drawing, draw_regions))
+            self._bin_values(bins, var_hist, self._handle_pixel(cx, cy, x, -y, data, drawing, draw_regions))
           if x != 0 and y != 0:
-            self._bin_values(bins, self._handle_pixel(cx, cy, -x, -y, data, drawing, draw_regions))
+            self._bin_values(bins, var_hist, self._handle_pixel(cx, cy, -x, -y, data, drawing, draw_regions))
           if draw_regions and x == stopPoint[0]:
             drawing[cy + y, cx + x] = 255
       features = np.concatenate((features, bins))
+      if self.var_feature:
+        variance = np.var(var_hist)
+        var_features.append(variance)
+        a = 360/self.var_split
+        mx = 0
+        my = 0
+        for i in range(0, self.var_split):
+          rad = math.radians(a*(i+1)/2)
+          vec = (radius*math.sin(rad), radius*math.cos(rad))
+          mx += var_hist[i]*vec[0]
+          my += var_hist[i]*vec[1]
+        var_features.append(math.sqrt(mx**2 + my**2))
+
     
     if self.normalize:
       features = self._normalize_features(features)
+
+    if self.var_feature:
+      features = np.concatenate((features, np.asarray(var_features)))
 
     if draw_regions:
       return features, drawing
