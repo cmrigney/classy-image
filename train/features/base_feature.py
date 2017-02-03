@@ -5,7 +5,7 @@ class BaseFeature:
     pass
   
   def process_image(self, filename, draw_regions=False):
-    data = misc.imread(filename, flatten=True)
+    data = misc.imread(filename, flatten=True, mode='RGB')
     return self.process_data(data, draw_regions)
   
   def process_data(self, data, draw_regions):
