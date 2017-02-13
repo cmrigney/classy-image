@@ -114,7 +114,8 @@ class RIHOG(BaseFeature):
     var_idx = vectorAngle/360
     var_idx *= self.var_split
     var_idx = int(var_idx)
-    var_hist[var_idx] += g
+    var_hist[lowerIdx][var_idx] += g*lowerPercent
+    var_hist[higherIdx][var_idx] += g*higherPercent
   
   def _normalize_features(self, features):
     normFeatures = np.asarray([])
@@ -142,7 +143,7 @@ class RIHOG(BaseFeature):
     for spatial_bin in range(0, self.num_spatial_bins):
       radius = self.delta_radius * (spatial_bin + 1)
       bins = [0] * self.num_orientation_bins
-      var_hist = [0] * self.var_split
+      var_hist = [[0] * self.var_split] * self.num_orientation_bins
       for y in range(0, radius):
         lp = self._get_circle_point(y, radius)
         stopPoint = self._get_circle_point(y, radius - self.delta_radius)
@@ -158,17 +159,19 @@ class RIHOG(BaseFeature):
             drawing[cy + y, cx + x] = 255
       features = np.concatenate((features, bins))
       if self.var_feature:
-        variance = np.var(var_hist)
-        var_features.append(variance)
-        a = 360/self.var_split
-        mx = 0
-        my = 0
-        for i in range(0, self.var_split):
-          rad = math.radians(a*(i+1)/2)
-          vec = (radius*math.sin(rad), radius*math.cos(rad))
-          mx += var_hist[i]*vec[0]
-          my += var_hist[i]*vec[1]
-        var_features.append(math.sqrt(mx**2 + my**2))
+        for j in range(0, self.num_orientation_bins):
+          vh = var_hist[j]
+          variance = np.var(vh)
+          var_features.append(variance)
+          a = 360/self.var_split
+          mx = 0
+          my = 0
+          for i in range(0, self.var_split):
+            rad = math.radians(a*(i+1) - a/2)
+            vec = (radius*math.sin(rad), radius*math.cos(rad))
+            mx += vh[i]*vec[0]
+            my += vh[i]*vec[1]
+          var_features.append(mx**2 + my**2)
 
     
     if self.normalize:

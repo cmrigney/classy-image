@@ -7,13 +7,17 @@ from sklearn.model_selection import train_test_split
 from os import listdir
 from os.path import isfile, join
 from multiprocessing import Process, Value, Array, Pool
+import time
 
 clf = cv2.ml.Boost_create()
 clf.setWeakCount(500)
 clf.setBoostType(cv2.ml.BOOST_REAL)
 
 #c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, num_blocks_first_ring=6, dist_mult=1.1)
-c = RIHOG(num_spatial_bins=4, delta_radius=6, num_orientation_bins=13, normalize=True, normalize_threshold=0.2, gaussian_filter=False, sigma=2, var_feature=True, var_split=32)
+c = RIHOG(num_spatial_bins=6, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_threshold=0.2, gaussian_filter=False, sigma=1, var_feature=True, var_split=16)
+
+def getDescriptor():
+  return c
 
 def getPositiveSample(f):
   name = 'data/pos/' + f
@@ -39,7 +43,7 @@ def trainClf():
     return onlyfiles
 
   def getSamples():
-    p = Pool(4)
+    p = Pool(2)
     pos = np.asarray(p.map(getPositiveSample, listFiles('data/pos/')))
     #pos = []
     #for f in listFiles('data/pos/'):
@@ -62,13 +66,20 @@ def trainClf():
 
     return X, y
 
+  starttime = time.time()
   X, y = getSamples()
+  elapsedtime = time.time() - starttime
+  print('loaded samples in ' + str(elapsedtime) + ' seconds')
   X = np.asarray(X, dtype=np.float32)
   y = np.asarray(y, dtype=np.int32)
 
   X, y = shuffle(X, y, random_state=1)
 
-  X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.01, random_state=1)
+  X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.05, random_state=1)
+
+  print('training samples: ' + str(len(X_train)))
+  print('test samples: ' + str(len(X_test)))
+  print('total samples: ' + str(len(X)))
 
   clf.train(X_train, cv2.ml.ROW_SAMPLE, y_train)
 

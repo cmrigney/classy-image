@@ -11,7 +11,7 @@ from os.path import isfile, join
 from multiprocessing import Process, Value, Array, Pool
 
 #c = CircularHistogramDepthDifference(block_size=8, num_rings=3, ring_dist=10, num_blocks_first_ring=6)
-c = RIHOG(num_spatial_bins=4, delta_radius=6, num_orientation_bins=13, normalize=True, normalize_threshold=0.2, gaussian_filter=False, sigma=1, var_feature=True, var_split=32)
+c = RIHOG(num_spatial_bins=6, delta_radius=4, num_orientation_bins=13, normalize=True, normalize_threshold=0.2, gaussian_filter=False, sigma=1, var_feature=True, var_split=16)
 
 def getPositiveSample(f):
   name = 'data/pos/' + f
@@ -41,28 +41,36 @@ if __name__ == "__main__":
 
   def getSamples():
     p = Pool(4)
-    pos = np.asarray(p.map(getPositiveSample, listFiles('data/pos/')))
+    posFiles = listFiles('data/pos/')
+    pos = np.asarray(p.map(getPositiveSample, posFiles))
     Yp = np.asarray(pos)[:,1]
     Ip = Yp >= 0
     Yp = Yp[Ip]
     Xp = np.asarray(pos)[:,0]
     Xp = Xp[Ip]
 
-    neg = np.asarray(p.map(getNegativeSample, listFiles('data/neg/')))
+    negFiles = listFiles('data/neg/')
+    neg = np.asarray(p.map(getNegativeSample, negFiles))
     Yn = np.asarray(neg)[:,1]
     In = Yn >= 0
     Yn = Yn[In]
     Xn = np.asarray(neg)[:,0]
     Xn = Xn[In]
 
+    mapName = lambda prefix: np.vectorize(lambda n: prefix + n)
+
     X = np.concatenate((Xp, Xn)).tolist()
     y = np.concatenate((Yp, Yn)).tolist()
 
-    return X, y
+    posFiles = mapName('data/pos/')(posFiles)
+    negFiles = mapName('data/neg/')(negFiles)
+    names = np.concatenate((posFiles, negFiles)).tolist()
 
-  X, y = getSamples()
+    return X, y, names
 
-  X, y = shuffle(X, y, random_state=1)
+  Xo, yo, names = getSamples()
+
+  X, y = shuffle(Xo, yo, random_state=1)
 
   from sklearn.tree import _tree
 
@@ -91,9 +99,16 @@ if __name__ == "__main__":
 
   clf.fit(X, y)
 
-  tree_to_code(clf.estimators_[0], [str(x) for x in range(0, 60)])
+  tree_to_code(clf.estimators_[0], [str(x) for x in range(0, len(X[0]))])
   score = clf.score(X, y)
   print(str(score))
+
+  pred = clf.predict(Xo)
+  incorrectIdx = pred != yo
+  incorrect = np.asarray(names)[incorrectIdx]
+
+  print('Feature importances:')
+  print(str(clf.feature_importances_))
 
   estimator = clf.estimators_[0]
   n_nodes = estimator.tree_.node_count
@@ -145,3 +160,4 @@ if __name__ == "__main__":
   predicted = cross_val_predict(clf, X, y, cv=5)
   pscore = metrics.accuracy_score(y, predicted) 
   print("Predict Accuracy: %0.2f" % pscore)
+
