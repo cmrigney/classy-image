@@ -11,6 +11,13 @@ typedef struct _PixelInfo
   float vectorAngle;
 } PixelInfo;
 
+typedef struct _PreprocessedData
+{
+  cv::Mat straight;
+  cv::Mat diagonal;
+  bool empty = true;
+} PreprocessedData;
+
 class RIHOG
 {
 public:
@@ -25,8 +32,9 @@ public:
         bool varFeature = true,
         int varSplit = 8);
 
+  void preprocessData(cv::Mat &image, PreprocessedData &data);
   std::vector<float> processImage(const char *filename, bool drawRegions = false);
-  std::vector<float> processData(cv::Mat &image, bool drawRegions = false);
+  std::vector<float> processData(cv::Mat &image, bool drawRegions = false, PreprocessedData &preproc = PreprocessedData());
 
 private:
   int _numSpatialBins;
@@ -42,7 +50,7 @@ private:
 
   std::vector<float> _normalizeFeatures(std::vector<float> &features);
   void _binValues(std::vector<float> &bins, std::vector<std::vector<float> > &varHist, PixelInfo info);
-  PixelInfo _handlePixel(int cx, int cy, int x, int y, cv::Mat &data, cv::Mat &drawing, bool drawRegions);
+  PixelInfo _handlePixel(int cx, int cy, int x, int y, cv::Mat &data, cv::Mat &drawing, bool drawRegions, PreprocessedData &pre);
   cv::Point2i _getCirclePoint(int y, int radius);
   void _buildLut(int resolution);
 

@@ -14,7 +14,7 @@ const int blockSize = 64;
 const int halfBlockSize = blockSize / 2;
 
 #ifndef NDEBUG
-#define STARTOVER 0
+#define STARTOVER 1
 #else
 #define STARTOVER 1
 #endif
@@ -22,7 +22,7 @@ const int halfBlockSize = blockSize / 2;
 
 int main()
 {
-  ThreadPool pool(3);
+  ThreadPool pool(5);
   RIHOG c = RIHOG(6, 4, 13, true, 0.2f, false, 1, 1, true, 16);
   std::chrono::time_point<std::chrono::system_clock> start, end;
   std::chrono::duration<double> elapsed_seconds;
@@ -41,7 +41,7 @@ int main()
   vector<vector<float> > X(pos.size() + neg.size());
   vector<int> y(pos.size() + neg.size());
 
-  auto x = pool.partition(pos.size(), 3, [&](int start, int end) {
+  auto x = pool.partition(pos.size(), 1, [&](int start, int end) {
     for (int i = start; i < end; i++)
     {
       X[i] = c.processImage(pos[i].c_str());
@@ -53,7 +53,7 @@ int main()
 
   int negStart = pos.size();
 
-  x = pool.partition(neg.size(), 3, [&](int start, int end) {
+  x = pool.partition(neg.size(), 5, [&](int start, int end) {
     for (int i = start; i < end; i++)
     {
       X[i + negStart] = c.processImage(neg[i].c_str());
@@ -89,9 +89,9 @@ int main()
   Ptr<Boost> clf = Boost::create();
 
   clf->setBoostType(Boost::REAL);
-  clf->setWeakCount(500);
+  clf->setWeakCount(1000);
   float priors[] = { 1, 0.01 };
-  clf->setPriors(Mat(2, 1, CV_32F, priors));
+  //clf->setPriors(Mat(2, 1, CV_32F, priors));
   
   clf->train(Xtrain, ROW_SAMPLE, ytrain);
 
@@ -152,7 +152,9 @@ int main()
       if (r.x < 0 || r.y < 0 || r.x + r.width >= image.size().width || r.y + r.height >= image.size().height)
         return false;
       Mat roi = image(r);
-      auto X = c.processData(roi);
+      PreprocessedData pre;
+      c.preprocessData(roi, pre);
+      auto X = c.processData(roi, false, pre);
       float val = clf->predict(X);
       if (val >= 0.5f)
       {
