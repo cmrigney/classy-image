@@ -23,7 +23,7 @@ const int halfBlockSize = blockSize / 2;
 int main()
 {
   ThreadPool pool(3);
-  RIHOG c;
+  RIHOG c = RIHOG(6, 4, 13, true, 0.2f, false, 1, 1, true, 16);
   std::chrono::time_point<std::chrono::system_clock> start, end;
   std::chrono::duration<double> elapsed_seconds;
 
@@ -34,6 +34,9 @@ int main()
   GetFilesInDirectory(pos, "../../data/pos");
   vector<string> neg;
   GetFilesInDirectory(neg, "../../data/neg");
+
+  cout << "Processing " << pos.size() << " positives." << endl;
+  cout << "Processing " << neg.size() << " negatives." << endl;
 
   vector<vector<float> > X(pos.size() + neg.size());
   vector<int> y(pos.size() + neg.size());
@@ -86,7 +89,7 @@ int main()
   Ptr<Boost> clf = Boost::create();
 
   clf->setBoostType(Boost::REAL);
-  clf->setWeakCount(1000);
+  clf->setWeakCount(500);
   float priors[] = { 1, 0.01 };
   clf->setPriors(Mat(2, 1, CV_32F, priors));
   
@@ -109,6 +112,14 @@ int main()
 
     double rightCount = responses.size().height - wrongCount;
     cout << title << " accuracy: " << setprecision(4) << (rightCount / responses.size().height) * 100 << endl;
+    Mat diff = predictions - responses;
+    Mat falsePositives, falseNegatives;
+    diff.convertTo(falsePositives, CV_8U);
+    diff *= -1;
+    diff.convertTo(falseNegatives, CV_8U);
+
+    cout << "False positives: " << sum(falsePositives)[0] << endl;
+    cout << "False negatives: " << sum(falseNegatives)[0] << endl;
   };
 
   runPredict("Train", Xtrain, ytrain);
@@ -130,63 +141,69 @@ int main()
 
 #endif
 
-  Mat image = imread("../../data/test/test7.png");
-  cvtColor(image, image, CV_BGR2GRAY);
-  image.convertTo(image, CV_32F);
+  auto scanImage = [&](const char *filename)
+  {
+    Mat image = imread(filename);
+    cvtColor(image, image, CV_BGR2GRAY);
+    image.convertTo(image, CV_32F);
 
-  auto scan = [&image, &c, &clf](int x, int y) {
-    Rect r(x - halfBlockSize, y - halfBlockSize, blockSize, blockSize);
-    if (r.x < 0 || r.y < 0 || r.x + r.width >= image.size().width || r.y + r.height >= image.size().height)
+    auto scan = [&image, &c, &clf](int x, int y) {
+      Rect r(x - halfBlockSize, y - halfBlockSize, blockSize, blockSize);
+      if (r.x < 0 || r.y < 0 || r.x + r.width >= image.size().width || r.y + r.height >= image.size().height)
+        return false;
+      Mat roi = image(r);
+      auto X = c.processData(roi);
+      float val = clf->predict(X);
+      if (val >= 0.5f)
+      {
+        //cout << "Found x: " << x << " y: " << y << endl;
+        return true;
+      }
       return false;
-    Mat roi = image(r);
-    auto X = c.processData(roi);
-    float val = clf->predict(X);
-    if (val >= 0.5f)
-    {
-      //cout << "Found x: " << x << " y: " << y << endl;
-      return true;
-    }
-    return false;
+    };
+
+    cout << "Starting scan..." << endl;
+    start = std::chrono::system_clock::now();
+
+    vector<Mat> layers;
+    mutex m;
+
+    auto imageSize = image.size();
+    auto x2 = pool.partition(image.size().area(), 2, [&scan, &imageSize, &m, &layers](int start, int end) {
+      Mat b = Mat::zeros(imageSize, CV_8UC3);
+      int imageWidth = imageSize.width;
+      for (int i = start; i < start + (end - start) / 2; i++) {
+        int x = (i * 2 - start) % imageWidth;
+        int y = (i * 2 - start) / imageWidth;
+        bool found = scan(x, y);
+        if (found)
+        {
+          rectangle(b, Rect(x - 1, y - 1, 2, 2), Scalar(0, 0, 255));
+        }
+      }
+      lock_guard<mutex> guard(m);
+      layers.push_back(b);
+    });
+
+    x2.wait();
+
+    end = std::chrono::system_clock::now();
+
+    elapsed_seconds = end - start;
+
+    std::cout << "elapsed time: " << elapsed_seconds.count() << "s\n";
+
+    Mat drawing;
+    cvtColor(image, drawing, COLOR_GRAY2RGB);
+    drawing.convertTo(drawing, CV_8UC3);
+    for (int i = 0; i < layers.size(); i++)
+      bitwise_or(drawing, layers[i], drawing);
+
+    imshow(filename, drawing);
   };
 
-  cout << "Starting scan..." << endl;
-  start = std::chrono::system_clock::now();
-
-  vector<Mat> layers;
-  mutex m;
-
-  auto imageSize = image.size();
-  auto x2 = pool.partition(image.size().area(), 2, [&scan, &imageSize, &m, &layers](int start, int end) {
-    Mat b = Mat::zeros(imageSize, CV_8UC3);
-    int imageWidth = imageSize.width;
-    for (int i = start; i < start + (end - start)/2; i++) {
-      int x = (i*2 - start) % imageWidth;
-      int y = (i*2 - start) / imageWidth;
-      bool found = scan(x, y);
-      if (found)
-      {
-        rectangle(b, Rect(x - 1, y - 1, 2, 2), Scalar(0, 0, 255));
-      }
-    }
-    lock_guard<mutex> guard(m);
-    layers.push_back(b);
-  });
-
-  x2.wait();
-
-  end = std::chrono::system_clock::now();
-
-  elapsed_seconds = end - start;
-
-  std::cout << "elapsed time: " << elapsed_seconds.count() << "s\n";
-
-  Mat drawing;
-  cvtColor(image, drawing, COLOR_GRAY2RGB);
-  drawing.convertTo(drawing, CV_8UC3);
-  for (int i = 0; i < layers.size(); i++)
-    bitwise_or(drawing, layers[i], drawing);
-  
-  imshow("test", drawing);
+  scanImage("../../data/test/test7.png");
+  scanImage("../../data/test/test6.png");
   waitKey(-1);
 
   system("pause");
