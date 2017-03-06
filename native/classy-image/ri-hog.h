@@ -16,6 +16,20 @@ typedef struct _PreprocessedData
   cv::Mat straight;
   cv::Mat diagonal;
   bool empty = true;
+
+  _PreprocessedData() : empty(true)
+  {}
+  _PreprocessedData(cv::Mat &s, cv::Mat &d, bool e) : straight(s), diagonal(d), empty(e)
+  {}
+
+  _PreprocessedData operator()(const cv::Rect &r)
+  {
+    return _PreprocessedData(
+      straight(r),
+      diagonal(r),
+      false
+    );
+  }
 } PreprocessedData;
 
 class RIHOG
@@ -33,7 +47,7 @@ public:
         int varSplit = 8);
 
   void preprocessData(cv::Mat &image, PreprocessedData &data);
-  std::vector<float> processImage(const char *filename, bool drawRegions = false);
+  std::vector<float> processImage(const char *filename, bool drawRegions = false, bool rsz = false);
   std::vector<float> processData(cv::Mat &image, bool drawRegions = false, PreprocessedData &preproc = PreprocessedData());
 
 private:

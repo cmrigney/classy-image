@@ -4,6 +4,8 @@
 using namespace std;
 using namespace cv;
 
+#define DIV(a,b) (b == 0 ? 0 : a/b)
+
 template<class T>
 static void vectorconcat(vector<T> &a, vector<T> &b)
 {
@@ -48,11 +50,13 @@ void RIHOG::_buildLut(int resolution)
   }
 }
 
-vector<float> RIHOG::processImage(const char *filename, bool drawRegions)
+vector<float> RIHOG::processImage(const char *filename, bool drawRegions, bool rsz)
 {
   Mat image = imread(filename);
   cvtColor(image, image, CV_BGR2GRAY);
   image.convertTo(image, CV_32F);
+  if(rsz)
+    resize(image, image, image.size() / 2);
   PreprocessedData pre;
   preprocessData(image, pre);
   return processData(image, drawRegions, pre);
@@ -104,7 +108,7 @@ PixelInfo RIHOG::_handlePixel(int cx, int cy, int x, int y, Mat &data, Mat &draw
   if (drawRegions)
     drawing.at<float>(cy + y, cx + x) /= 2.f;
 
-  float vectorAngle = atan2(y, x) * 180.f / CV_PI;
+  float vectorAngle = fastAtan2(y, x) * 180.f / CV_PI;
   int lowerY = abs(x) / 2;
   int upperY = 2 * abs(x);
   int absY = abs(y);
@@ -159,7 +163,43 @@ PixelInfo RIHOG::_handlePixel(int cx, int cy, int x, int y, Mat &data, Mat &draw
   }
   else
   {
+    
+    float gx, gy;
 
+    if (dir.y != 0 && dir.x == 0)
+    {
+      gx = data.at<float>(py, px - 1) * -1 + data.at<float>(py, px + 1);
+      gy = data.at<float>(py - 1, px) * -1 + data.at<float>(py + 1, px);
+      gx *= dir.y; //if y is negative, then rotate 180, which would be negating both signs
+      gy *= dir.y;
+    }
+    else if (dir.y == 0 && dir.x != 0)
+    {
+      gx = data.at<float>(py - 1, px) * -1 + data.at<float>(py + 1, px);
+      gy = data.at<float>(py, px + 1) * -1 + data.at<float>(py, px - 1);
+      gx *= dir.x; //if x is negative, then rotate 180, which would be negating both signs
+      gy *= dir.x;
+    }
+    else
+    {
+      if (dir.x == dir.y)
+      {
+        //1, 1 means forward like /
+        gx = data.at<float>(py - 1, px - 1) * -1 + data.at<float>(py + 1, px + 1);
+        gy = data.at<float>(py - 1, px + 1) * -1 + data.at<float>(py + 1, px - 1);
+        gx *= dir.x; //if negative then rotate 180
+        gy *= dir.x;
+      }
+      else
+      {
+        //-1, 1 means backward like \ 
+        gx = data.at<float>(py + 1, px - 1) * -1 + data.at<float>(py - 1, px + 1);
+        gy = data.at<float>(py - 1, px - 1) * -1 + data.at<float>(py + 1, px + 1);
+        gx *= dir.y;
+        gy *= dir.y;
+      }
+    }
+    /*
     Point2i gyl(-dir.y, dir.x),
       gyr(dir.y, -dir.x),
       gxl(dir.x, dir.y),
@@ -167,16 +207,12 @@ PixelInfo RIHOG::_handlePixel(int cx, int cy, int x, int y, Mat &data, Mat &draw
 
     float gx = data.at<float>(py + gxr.y, px + gxr.x) * -1 + data.at<float>(py + gxl.y, px + gxl.x);
     float gy = data.at<float>(py + gyl.y, px + gyl.x) * -1 + data.at<float>(py + gyr.y, px + gyr.x);
+    */
 
-    if (gx == 0)
-      gx = 1;
-    if (gy == 0)
-      gy = 1;
-
-    float g2 = sqrt(gx*gx + gy*gy);
-    float theta2 = atan(gy / gx) * 180. / CV_PI;
-    if (abs(g - g2) > 0.00001f || abs(theta - theta2) > 0.00001f)
-      return PixelInfo{ g, theta, vectorAngle };
+    g = sqrt(gx*gx + gy*gy);
+    theta = atan(DIV(gy, gx)) * 180. / CV_PI;
+    //if (abs(g - g2) > 0.00001f || abs(theta - theta2) > 0.00001f)
+    //  return PixelInfo{ g, theta, vectorAngle };
   }
 
   if (drawRegions)
@@ -249,18 +285,13 @@ void RIHOG::preprocessData(Mat &image, PreprocessedData &data)
       float gx = (*pl) * -1 + (*pr);
       float gy = (*pt) * -1 + (*pb);
 
-      if (gx == 0)
-        gx = 1;
-      if (gy == 0)
-        gy = 1;
-
       float g = sqrt(gx*gx + gy*gy);
-      float thetaY = atan(gy / gx) * 180. / CV_PI;
-      float thetaX = atan(gx / gy) * 180. / CV_PI;
+      float thetaY = atan(DIV(gy, gx)) * 180. / CV_PI;
+      float thetaX = atan(DIV(-gx, gy)) * 180. / CV_PI;
 
       (*dstStraight)[0] = g;
-      (*dstStraight)[1] = thetaY;
-      (*dstStraight)[2] = thetaX;
+      (*dstStraight)[1] = thetaX;
+      (*dstStraight)[2] = thetaY;
 
       float *dpl = pt - 1;
       float *dpr = pb + 1;
@@ -268,16 +299,11 @@ void RIHOG::preprocessData(Mat &image, PreprocessedData &data)
       float *dpb = pb - 1;
 
       gx = (*dpl) * -1 + (*dpr);
-      gy = (*dpb) * -1 + (*dpt);
-
-      if (gx == 0)
-        gx = 1;
-      if (gy == 0)
-        gy = 1;
+      gy = (*dpt) * -1 + (*dpb);
 
       g = sqrt(gx*gx + gy*gy);
-      thetaY = atan(gy / gx) * 180. / CV_PI;
-      thetaX = atan(gx / gy) * 180. / CV_PI;
+      thetaY = atan(DIV(gy, gx)) * 180. / CV_PI;
+      thetaX = atan(DIV(-gx, gy)) * 180. / CV_PI;
 
       (*dstDiagnonal)[0] = g;
       (*dstDiagnonal)[1] = thetaY;

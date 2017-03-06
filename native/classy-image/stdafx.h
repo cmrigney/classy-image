@@ -17,6 +17,8 @@
 #include <chrono>
 #include <ctime>
 #include <iomanip>
+#include <algorithm>
+#include <iterator>
 
 #include <opencv2\world.hpp>
 #include <opencv2\highgui.hpp>
