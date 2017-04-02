@@ -18,7 +18,7 @@ const int halfBlockSize = blockSize / 2;
 #ifndef NDEBUG
 #define STARTOVER 0
 #else
-#define STARTOVER 0
+#define STARTOVER 1
 #endif
 
 GridSearchResponse runSearch(GridSearchParams params, bool resize, string xmlName)
@@ -159,7 +159,7 @@ void doGridSearch()
   //}
 }
 
-int main()
+int main2()
 {
   initFixer();
 
@@ -170,11 +170,13 @@ int main()
   return 0;
 }
 
-int main2()
+int main()
 {
   initFixer();
 
-  RIHOG c = RIHOG(6, 4/2, 13, true, 0.2f, false, 1, 1, true, 16);
+  ThreadPool pool(3);
+
+  RIHOG c = RIHOG(12, 2, 13, false, 0.2f, true, 3, 2, true, 32);
   std::chrono::time_point<std::chrono::system_clock> start, end;
   std::chrono::duration<float> elapsed_seconds;
 
@@ -241,9 +243,9 @@ int main2()
 
   Ptr<Boost> clf = Boost::create();
 
-  clf->setBoostType(Boost::REAL);
+  clf->setBoostType(Boost::LOGIT);
   clf->setWeakCount(500);
-  float priors[] = { 1, 0.1 };
+  float priors[] = { 1, 0.001 };
   clf->setPriors(Mat(2, 1, CV_32F, priors));
   
   clf->train(Xtrain, ROW_SAMPLE, ytrain);
@@ -299,7 +301,7 @@ int main2()
   {
     cvtColor(image, image, CV_BGR2GRAY);
     image.convertTo(image, CV_32F);
-    resize(image, image, image.size() / 2);
+    //resize(image, image, image.size() / 2);
 
     PreprocessedData pre;
 
@@ -331,25 +333,25 @@ int main2()
     auto imageSize = image.size();
     int begin = 0;
     int last = imageSize.height;
-    //auto x2 = pool.partition(image.size().height, 3, [&scan, &imageSize, &m, &layers](int begin, int last) {
-    Mat b = Mat::zeros(imageSize, CV_8UC3);
-    int imageWidth = imageSize.width;
-    for (int y = begin; y < last; y += 2)
-    {
-      for (int x = 0; x < imageWidth; x += 2)
+    auto x2 = pool.partition(image.size().height, 3, [&scan, &imageSize, &m, &layers](int begin, int last) {
+      Mat b = Mat::zeros(imageSize, CV_8UC3);
+      int imageWidth = imageSize.width;
+      for (int y = begin; y < last; y += 2)
       {
-        bool found = scan(x, y);
-        if (found)
+        for (int x = 0; x < imageWidth; x += 2)
         {
-          rectangle(b, Rect(x - 1, y - 1, 2, 2), Scalar(0, 0, 255));
+          bool found = scan(x, y);
+          if (found)
+          {
+            rectangle(b, Rect(x - 1, y - 1, 2, 2), Scalar(0, 0, 255));
+          }
         }
       }
-    }
-    //lock_guard<mutex> guard(m);
-    layers.push_back(b);
-    //});
+      lock_guard<mutex> guard(m);
+      layers.push_back(b);
+    });
 
-    //x2.wait();
+    x2.wait();
 
     end = std::chrono::system_clock::now();
 
